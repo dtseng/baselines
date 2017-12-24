@@ -32,6 +32,7 @@ if __name__ == '__main__':
             num_actions=env.action_space.n,
             optimizer=tf.train.AdamOptimizer(learning_rate=5e-4),
         )
+
         # Create the replay buffer
         replay_buffer = ReplayBuffer(50000)
         # Create the schedule for exploration starting from 1 (every action is random) down to

@@ -4,6 +4,8 @@ import dill
 import tempfile
 import tensorflow as tf
 import zipfile
+import time
+import sys
 
 import baselines.common.tf_util as U
 
@@ -164,7 +166,7 @@ def learn(env,
     """
     # Create all the functions necessary to train the model
 
-    sess = U.make_session(num_cpu=num_cpu)
+    sess = U.make_session(num_cpu=1)
     sess.__enter__()
 
     def make_obs_ph(name):
@@ -199,17 +201,26 @@ def learn(env,
                                  initial_p=1.0,
                                  final_p=exploration_final_eps)
 
+    summary_writer = tf.summary.FileWriter("results/PongSpeedTest/run1", sess.graph, flush_secs=10)
+
     # Initialize the parameters and copy them to the target network.
     U.initialize()
     update_target()
 
+    summary_writer = tf.summary.FileWriter(sys.argv[1], tf.get_default_graph(), flush_secs=10)
+
+
     episode_rewards = [0.0]
     saved_mean_reward = None
     obs = env.reset()
+
+    start_time = time.time()
+
     with tempfile.TemporaryDirectory() as td:
         model_saved = False
         model_file = os.path.join(td, "model")
         for t in range(max_timesteps):
+            
             if callback is not None:
                 if callback(locals(), globals()):
                     break
@@ -223,6 +234,10 @@ def learn(env,
             episode_rewards[-1] += rew
             if done:
                 obs = env.reset()
+                summary = tf.Summary()
+                summary.value.add(tag='return', simple_value=episode_rewards[-1])
+                summary.value.add(tag='mean100_return', simple_value=np.mean(episode_rewards[-100:]))
+                summary_writer.add_summary(summary, t)
                 episode_rewards.append(0.0)
 
             if t > learning_starts and t % train_freq == 0:
@@ -244,11 +259,16 @@ def learn(env,
 
             mean_100ep_reward = round(np.mean(episode_rewards[-101:-1]), 1)
             num_episodes = len(episode_rewards)
-            if done and print_freq is not None and len(episode_rewards) % print_freq == 0:
+            if done and print_freq is not None and len(episode_rewards) % 1 == 0:
                 logger.record_tabular("steps", t)
                 logger.record_tabular("episodes", num_episodes)
+                logger.record_tabular("current episode reward", episode_rewards[-2])
                 logger.record_tabular("mean 100 episode reward", mean_100ep_reward)
                 logger.record_tabular("% time spent exploring", int(100 * exploration.value(t)))
+                summary = tf.Summary()
+                summary.value.add(tag='episode_return', simple_value=episode_rewards[-2])
+                summary.value.add(tag='mean100_return', simple_value=mean_100ep_reward)
+                summary_writer.add_summary( summary, t)
                 logger.dump_tabular()
 
             if (checkpoint_freq is not None and t > learning_starts and

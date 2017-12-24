@@ -1,3 +1,6 @@
+import math, sys
+
+
 """Deep Q learning graph
 
 The functions in this file can are used to create the following functions:
@@ -190,6 +193,7 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
         q_t = q_func(obs_t_input.get(), num_actions, scope="q_func", reuse=True)  # reuse parameters from act
         q_func_vars = U.scope_vars(U.absolute_scope_name("q_func"))
 
+
         # target q network evalution
         q_tp1 = q_func(obs_tp1_input.get(), num_actions, scope="target_q_func")
         target_q_func_vars = U.scope_vars(U.absolute_scope_name("target_q_func"))
@@ -198,6 +202,7 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
         q_t_selected = tf.reduce_sum(q_t * tf.one_hot(act_t_ph, num_actions), 1)
 
         # compute estimate of best possible value starting from state at t + 1
+        double_q = False
         if double_q:
             q_tp1_using_online_net = q_func(obs_tp1_input.get(), num_actions, scope="q_func", reuse=True)
             q_tp1_best_using_online_net = tf.arg_max(q_tp1_using_online_net, 1)
@@ -208,6 +213,18 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
 
         # compute RHS of bellman equation
         q_t_selected_target = rew_t_ph + gamma * q_tp1_best_masked
+
+
+        if len(sys.argv) == 3:
+            if sys.argv[2] == "perturb":
+                perturb = 1e-9
+                q_t_selected_target = q_t_selected_target + perturb * tf.random_uniform(tf.shape(q_t_selected_target), -1, 1) # y.shape()? or y.get_shape()? 
+
+            elif sys.argv[2] == "softq":
+                soft_beta = 1.0e20
+                q_t_selected_target = rew_t_ph + (1.0 - done_mask_ph) * gamma/soft_beta * \
+                                                      tf.reduce_logsumexp(math.log(1/float(num_actions)) + soft_beta * q_tp1, axis=1)
+
 
         # compute the error (potentially clipped)
         td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
