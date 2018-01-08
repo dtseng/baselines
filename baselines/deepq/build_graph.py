@@ -129,7 +129,7 @@ def build_act(make_obs_ph, q_func, num_actions, scope="deepq", reuse=None):
         return act
 
 
-def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=None, gamma=1.0, double_q=True, scope="deepq", reuse=None):
+def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=None, gamma=1.0, double_q=True,scope="deepq", reuse=None):
     """Creates the train function:
 
     Parameters
@@ -183,6 +183,7 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
     with tf.variable_scope(scope, reuse=reuse):
         # set up placeholders
         obs_t_input = U.ensure_tf_input(make_obs_ph("obs_t"))
+        step_number_ph = tf.placeholder(tf.float32, [], name="step_number")
         act_t_ph = tf.placeholder(tf.int32, [None], name="action")
         rew_t_ph = tf.placeholder(tf.float32, [None], name="reward")
         obs_tp1_input = U.ensure_tf_input(make_obs_ph("obs_tp1"))
@@ -213,18 +214,20 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
 
         # compute RHS of bellman equation
         q_t_selected_target = rew_t_ph + gamma * q_tp1_best_masked
-
-
-        if len(sys.argv) == 3:
+        soft_beta = tf.constant(-1)
+        if len(sys.argv) >= 3:
             if sys.argv[2] == "perturb":
                 perturb = 1e-9
                 q_t_selected_target = q_t_selected_target + perturb * tf.random_uniform(tf.shape(q_t_selected_target), -1, 1) # y.shape()? or y.get_shape()? 
 
             elif sys.argv[2] == "softq":
-                soft_beta = 1.0e20
+                softq_k = float(sys.argv[3])
+                test = tf.constant(softq_k)
+                soft_beta = tf.scalar_mul(tf.constant(softq_k), step_number_ph)
+                # soft_beta = step_number_ph * softq_k # Linear scheduling
+                # soft_beta = 1.0e20
                 q_t_selected_target = rew_t_ph + (1.0 - done_mask_ph) * gamma/soft_beta * \
                                                       tf.reduce_logsumexp(math.log(1/float(num_actions)) + soft_beta * q_tp1, axis=1)
-
 
         # compute the error (potentially clipped)
         td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
@@ -254,9 +257,10 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
                 rew_t_ph,
                 obs_tp1_input,
                 done_mask_ph,
-                importance_weights_ph
+                importance_weights_ph,
+                step_number_ph
             ],
-            outputs=td_error,
+            outputs=td_error,  
             updates=[optimize_expr]
         )
         update_target = U.function([], [], updates=[update_target_expr])
