@@ -203,7 +203,7 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
         q_t_selected = tf.reduce_sum(q_t * tf.one_hot(act_t_ph, num_actions), 1)
 
         # compute estimate of best possible value starting from state at t + 1
-        double_q = False
+        double_q = True
         if double_q:
             q_tp1_using_online_net = q_func(obs_tp1_input.get(), num_actions, scope="q_func", reuse=True)
             q_tp1_best_using_online_net = tf.arg_max(q_tp1_using_online_net, 1)
@@ -218,7 +218,7 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
         if len(sys.argv) >= 3:
             if sys.argv[2] == "perturb":
                 perturb = 1e-9
-                q_t_selected_target = q_t_selected_target + perturb * tf.random_uniform(tf.shape(q_t_selected_target), -1, 1) # y.shape()? or y.get_shape()? 
+                q_t_selected_target = q_t_selected_target + perturb * tf.random_uniform(tf.shape(q_t_selected_target), -1, 1) # y.shape()? or y.get_shape()?
 
             elif sys.argv[2] == "softq":
                 softq_k = float(sys.argv[3])
@@ -260,7 +260,7 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
                 importance_weights_ph,
                 step_number_ph
             ],
-            outputs=td_error,  
+            outputs=td_error,
             updates=[optimize_expr]
         )
         update_target = U.function([], [], updates=[update_target_expr])
