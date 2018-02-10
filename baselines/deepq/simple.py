@@ -239,7 +239,7 @@ def learn(env,
                 summary.value.add(tag='mean100_return', simple_value=np.mean(episode_rewards[-100:]))
                 summary_writer.add_summary(summary, t)
                 if score_limit is not None and episode_rewards[-1] >= score_limit:
-                    break
+                    break;
                 episode_rewards.append(0.0)
 
             if t > learning_starts and t % train_freq == 0:
