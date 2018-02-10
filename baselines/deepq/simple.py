@@ -96,6 +96,7 @@ def learn(env,
           prioritized_replay_beta_iters=None,
           prioritized_replay_eps=1e-6,
           num_cpu=16,
+          score_limit=None,
           callback=None):
     """Train a deepq model.
 
@@ -219,7 +220,7 @@ def learn(env,
         model_saved = False
         model_file = os.path.join(td, "model")
         for t in range(max_timesteps):
-            
+
             if callback is not None:
                 if callback(locals(), globals()):
                     break
@@ -237,6 +238,8 @@ def learn(env,
                 summary.value.add(tag='return', simple_value=episode_rewards[-1])
                 summary.value.add(tag='mean100_return', simple_value=np.mean(episode_rewards[-100:]))
                 summary_writer.add_summary(summary, t)
+                if score_limit is not None and episode_rewards[-1] >= score_limit:
+                    break
                 episode_rewards.append(0.0)
 
             if t > learning_starts and t % train_freq == 0:

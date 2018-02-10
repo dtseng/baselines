@@ -16,8 +16,7 @@ def main():
         env,
         q_func=model,
         lr=1e-4,
-        #max_timesteps=2000000,
-        max_timesteps=750000,
+        max_timesteps=2000000,
         buffer_size=10000,
         exploration_fraction=0.1,
         exploration_final_eps=0.01,
@@ -25,10 +24,11 @@ def main():
         learning_starts=10000,
         target_network_update_freq=1000,
         gamma=0.99,
-        prioritized_replay=True
+        prioritized_replay=True,
+        score_limit=-21
     )
     print("FINISHED.")
-    act.save("pong_model.pkl")
+    act.save("untrained_pong.pkl")
     env.close()
 
 
