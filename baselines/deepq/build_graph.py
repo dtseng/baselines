@@ -129,7 +129,7 @@ def build_act(make_obs_ph, q_func, num_actions, scope="deepq", reuse=None):
         return act
 
 
-def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=None, gamma=1.0, double_q=True,scope="deepq", reuse=None, prior=None):
+def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=None, gamma=1.0, double_q=True,scope="deepq", reuse=None, use_prior=False):
     """Creates the train function:
 
     Parameters
@@ -189,6 +189,7 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
         obs_tp1_input = U.ensure_tf_input(make_obs_ph("obs_tp1"))
         done_mask_ph = tf.placeholder(tf.float32, [None], name="done")
         importance_weights_ph = tf.placeholder(tf.float32, [None], name="weight")
+        prior_policy_ph = tf.placeholder(tf.float32, [None, num_actions], name="prior_policy")
 
         # q network evaluation
         q_t = q_func(obs_t_input.get(), num_actions, scope="q_func", reuse=True)  # reuse parameters from act
@@ -219,12 +220,12 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
             softq_k = float(sys.argv[3])
             test = tf.constant(softq_k)
             soft_beta = tf.scalar_mul(tf.constant(softq_k), step_number_ph)
-            if prior is None:
+            if use_prior is False:
                 q_t_selected_target = rew_t_ph + (1.0 - done_mask_ph) * gamma/soft_beta * \
                                                       tf.reduce_logsumexp(math.log(1/float(num_actions)) + soft_beta * q_tp1, axis=1)
             else:
-                # add prior here
-
+                q_t_selected_target = rew_t_ph + (1.0 - done_mask_ph) * gamma/soft_beta * \
+                                                      tf.reduce_logsumexp(tf.log(prior_policy_ph) + soft_beta * q_tp1, axis=1)
 
         # compute the error (potentially clipped)
         td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
@@ -255,7 +256,8 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
                 obs_tp1_input,
                 done_mask_ph,
                 importance_weights_ph,
-                step_number_ph
+                step_number_ph,
+                prior_policy_ph
             ],
             outputs=td_error,
             updates=[optimize_expr]

@@ -12,6 +12,9 @@ def callback(lcl, glb):
 def main():
     env = gym.make("CartPole-v0")
     model = deepq.models.mlp([64])
+
+    prior = deepq.load("models/cartpole.pkl", scope="prior")
+
     act = deepq.learn(
         env,
         q_func=model,
@@ -22,10 +25,12 @@ def main():
         exploration_final_eps=0.02,
         print_freq=1,
         callback=callback,
-        prioritized_replay=True
+        prioritized_replay=True,
+        scope="deepq",
+        prior=prior
     )
     print("Saving model to cartpole_model.pkl")
-    act.save("cartpole_model.pkl")
+    act.save("models/cartpole.pkl")
 
 
 if __name__ == '__main__':

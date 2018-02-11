@@ -76,6 +76,11 @@ def load(path, num_cpu=16, scope="deepq"):
     return ActWrapper.load(path, num_cpu=num_cpu, scope=scope)
 
 
+def softmax(x):
+    y = np.amax(x, axis=1)[:, None]
+    reduced = np.exp(x-y)
+    return reduced/np.sum(reduced, axis=1)[:, None]
+
 def learn(env,
           q_func,
           lr=5e-4,
@@ -172,6 +177,8 @@ def learn(env,
     sess = U.make_session(num_cpu=1)
     sess.__enter__()
 
+    use_prior = prior is not None
+
     def make_obs_ph(name):
         return U.BatchInput(env.observation_space.shape, name=name)
 
@@ -182,7 +189,8 @@ def learn(env,
         optimizer=tf.train.AdamOptimizer(learning_rate=lr),
         gamma=gamma,
         grad_norm_clipping=10,
-        scope=scope
+        scope=scope,
+        use_prior=use_prior
     )
     act_params = {
         'make_obs_ph': make_obs_ph,
@@ -221,9 +229,9 @@ def learn(env,
 
     with tempfile.TemporaryDirectory() as td:
         model_saved = False
-        model_file = os.path.join(td, "model")
+        time_of_training = time.strftime("%Y-%m-%dT%H:%M:%S")
+        model_file = "saved_models/{}/saved.ckpt".format(time_of_training)
         for t in range(max_timesteps):
-
             if callback is not None:
                 if callback(locals(), globals()):
                     break
@@ -253,7 +261,14 @@ def learn(env,
                 else:
                     obses_t, actions, rewards, obses_tp1, dones = replay_buffer.sample(batch_size)
                     weights, batch_idxes = np.ones_like(rewards), None
-                td_errors = train(obses_t, actions, rewards, obses_tp1, dones, weights, t)
+
+                if use_prior:
+                    prior_policy = softmax(prior(obses_tp1)[1])
+                else:
+                    prior_policy = np.zeros((obses_t.shape[0], env.action_space.n))
+                td_errors = train(obses_t, actions, rewards, obses_tp1, dones, weights, t, prior_policy)
+
+
                 if prioritized_replay:
                     new_priorities = np.abs(td_errors) + prioritized_replay_eps
                     replay_buffer.update_priorities(batch_idxes, new_priorities)
