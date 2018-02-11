@@ -7,6 +7,8 @@ from baselines.common.atari_wrappers_deprecated import wrap_dqn, ScaledFloatFram
 def main():
     env = gym.make("PongNoFrameskip-v4")
     env = ScaledFloatFrame(wrap_dqn(env))
+    # prior = deepq.load("models/not_trained_pong.pkl", scope="prior")
+
     model = deepq.models.cnn_to_mlp(
         convs=[(32, 8, 4), (64, 4, 2), (64, 3, 1)],
         hiddens=[256],
@@ -16,7 +18,8 @@ def main():
         env,
         q_func=model,
         lr=1e-4,
-        max_timesteps=2000000,
+        #max_timesteps=2000000,
+        max_timesteps=750000,
         buffer_size=10000,
         exploration_fraction=0.1,
         exploration_final_eps=0.01,
@@ -25,10 +28,12 @@ def main():
         target_network_update_freq=1000,
         gamma=0.99,
         prioritized_replay=True,
-        score_limit=-21
+        score_limit=None,
+        scope="prior"
+        # prior=None
     )
     print("FINISHED.")
-    act.save("untrained_pong.pkl")
+    act.save("models/fully_trained_pong.pkl")
     env.close()
 
 

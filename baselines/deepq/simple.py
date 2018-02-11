@@ -21,10 +21,10 @@ class ActWrapper(object):
         self._act_params = act_params
 
     @staticmethod
-    def load(path, num_cpu=16):
+    def load(path, num_cpu=16, scope="deepq"):
         with open(path, "rb") as f:
             model_data, act_params = dill.load(f)
-        act = deepq.build_act(**act_params)
+        act = deepq.build_act(**act_params, scope=scope)
         sess = U.make_session(num_cpu=num_cpu)
         sess.__enter__()
         with tempfile.TemporaryDirectory() as td:
@@ -57,7 +57,7 @@ class ActWrapper(object):
             dill.dump((model_data, self._act_params), f)
 
 
-def load(path, num_cpu=16):
+def load(path, num_cpu=16, scope="deepq"):
     """Load act function that was returned by learn function.
 
     Parameters
@@ -73,7 +73,7 @@ def load(path, num_cpu=16):
         function that takes a batch of observations
         and returns actions.
     """
-    return ActWrapper.load(path, num_cpu=num_cpu)
+    return ActWrapper.load(path, num_cpu=num_cpu, scope=scope)
 
 
 def learn(env,
@@ -97,6 +97,8 @@ def learn(env,
           prioritized_replay_eps=1e-6,
           num_cpu=16,
           score_limit=None,
+          prior=None,
+          scope="deepq",
           callback=None):
     """Train a deepq model.
 
@@ -179,7 +181,8 @@ def learn(env,
         num_actions=env.action_space.n,
         optimizer=tf.train.AdamOptimizer(learning_rate=lr),
         gamma=gamma,
-        grad_norm_clipping=10
+        grad_norm_clipping=10,
+        scope=scope
     )
     act_params = {
         'make_obs_ph': make_obs_ph,
@@ -225,7 +228,7 @@ def learn(env,
                 if callback(locals(), globals()):
                     break
             # Take action and update exploration to the newest value
-            action = act(np.array(obs)[None], update_eps=exploration.value(t))[0]
+            action = act(np.array(obs)[None], update_eps=exploration.value(t))[0][0]
             new_obs, rew, done, _ = env.step(action)
             # Store transition in the replay buffer.
             replay_buffer.add(obs, action, rew, new_obs, float(done))
@@ -239,7 +242,7 @@ def learn(env,
                 summary.value.add(tag='mean100_return', simple_value=np.mean(episode_rewards[-100:]))
                 summary_writer.add_summary(summary, t)
                 if score_limit is not None and episode_rewards[-1] >= score_limit:
-                    break;
+                    break
                 episode_rewards.append(0.0)
 
             if t > learning_starts and t % train_freq == 0:
