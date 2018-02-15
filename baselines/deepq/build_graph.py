@@ -129,7 +129,7 @@ def build_act(make_obs_ph, q_func, num_actions, scope="deepq", reuse=None):
         return act
 
 
-def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=None, gamma=1.0, double_q=True,scope="deepq", reuse=None, use_prior=False):
+def build_train(mode, make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=None, gamma=1.0, double_q=True,scope="deepq", reuse=None, use_prior=False):
     """Creates the train function:
 
     Parameters
@@ -204,7 +204,11 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
         q_t_selected = tf.reduce_sum(q_t * tf.one_hot(act_t_ph, num_actions), 1)
 
         # compute estimate of best possible value starting from state at t + 1
-        double_q = True
+        double_q = False
+        assert mode == "doubleq" or mode == "priortrain" or mode == "nodoubleq"
+        if mode == "doubleq" or mode == "priortrain":
+            double_q = True
+
         if double_q:
             q_tp1_using_online_net = q_func(obs_tp1_input.get(), num_actions, scope="q_func", reuse=True)
             q_tp1_best_using_online_net = tf.arg_max(q_tp1_using_online_net, 1)
@@ -216,10 +220,11 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
         # compute RHS of bellman equation
         q_t_selected_target = rew_t_ph + gamma * q_tp1_best_masked
         soft_beta = tf.constant(-1)
-        if len(sys.argv) >= 3 and sys.argv[2] == "softq":
+        if mode == "softq":
             softq_k = float(sys.argv[3])
             test = tf.constant(softq_k)
-            soft_beta = tf.scalar_mul(tf.constant(softq_k), step_number_ph)
+            # soft_beta = tf.scalar_mul(tf.constant(softq_k), step_number_ph) .. note to self:  add small epsilon
+            soft_beta = 1e-5
             if use_prior is False:
                 q_t_selected_target = rew_t_ph + (1.0 - done_mask_ph) * gamma/soft_beta * \
                                                       tf.reduce_logsumexp(math.log(1/float(num_actions)) + soft_beta * q_tp1, axis=1)

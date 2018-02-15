@@ -7,7 +7,7 @@ from baselines.common.atari_wrappers_deprecated import wrap_dqn, ScaledFloatFram
 def main():
     env = gym.make("PongNoFrameskip-v4")
     env = ScaledFloatFrame(wrap_dqn(env))
-    act = deepq.load("models/three_quarters_trained_pong.pkl", scope="prior")
+    act = deepq.load("pong_model.pkl")
 
     while True:
         obs, done = env.reset(), False

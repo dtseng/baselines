@@ -83,6 +83,8 @@ def softmax(x):
 
 def learn(env,
           q_func,
+          logdir,
+          mode,
           lr=5e-4,
           max_timesteps=100000,
           buffer_size=50000,
@@ -183,6 +185,7 @@ def learn(env,
         return U.BatchInput(env.observation_space.shape, name=name)
 
     act, train, update_target, debug = deepq.build_train(
+        mode=mode,
         make_obs_ph=make_obs_ph,
         q_func=q_func,
         num_actions=env.action_space.n,
@@ -213,13 +216,11 @@ def learn(env,
                                  initial_p=1.0,
                                  final_p=exploration_final_eps)
 
-    summary_writer = tf.summary.FileWriter(sys.argv[1], sess.graph, flush_secs=10)
+    summary_writer = tf.summary.FileWriter(logdir, sess.graph, flush_secs=10)
 
     # Initialize the parameters and copy them to the target network.
     U.initialize()
     update_target()
-
-    # summary_writer = tf.summary.FileWriter(sys.argv[1], tf.get_default_graph(), flush_secs=10)
 
     episode_rewards = [0.0]
     saved_mean_reward = None
@@ -285,10 +286,6 @@ def learn(env,
                 logger.record_tabular("current episode reward", episode_rewards[-2])
                 logger.record_tabular("mean 100 episode reward", mean_100ep_reward)
                 logger.record_tabular("% time spent exploring", int(100 * exploration.value(t)))
-                # summary = tf.Summary()
-                # summary.value.add(tag='episode_return', simple_value=episode_rewards[-2])
-                # summary.value.add(tag='mean100_return', simple_value=mean_100ep_reward)
-                # summary_writer.add_summary( summary, t)
                 logger.dump_tabular()
 
             if (checkpoint_freq is not None and t > learning_starts and
