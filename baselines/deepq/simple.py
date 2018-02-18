@@ -76,10 +76,16 @@ def load(path, num_cpu=16, scope="deepq"):
     return ActWrapper.load(path, num_cpu=num_cpu, scope=scope)
 
 
+# def softmax(x):
+#     y = np.amax(x, axis=1)[:, None]
+#     reduced = np.exp(x-y)
+#     return reduced/np.sum(reduced, axis=1)[:, None]
+
+
 def softmax(x):
-    y = np.amax(x, axis=1)[:, None]
+    y = np.amax(x, axis=1, keepdims=True)
     reduced = np.exp(x-y)
-    return reduced/np.sum(reduced, axis=1)[:, None]
+    return reduced/np.sum(reduced, axis=1, keepdims=True)
 
 def learn(env,
           q_func,

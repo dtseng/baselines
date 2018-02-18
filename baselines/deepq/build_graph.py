@@ -123,7 +123,7 @@ def build_act(make_obs_ph, q_func, num_actions, scope="deepq", reuse=None):
         update_eps_expr = eps.assign(tf.cond(update_eps_ph >= 0, lambda: update_eps_ph, lambda: eps))
 
         act = U.function(inputs=[observations_ph, stochastic_ph, update_eps_ph],
-                         outputs=[output_actions, q_values],
+                         outputs=[output_actions, q_values, deterministic_actions],
                          givens={update_eps_ph: -1.0, stochastic_ph: True},
                          updates=[update_eps_expr])
         return act
@@ -219,7 +219,8 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
         if len(sys.argv) >= 3 and sys.argv[2] == "softq":
             softq_k = float(sys.argv[3])
             test = tf.constant(softq_k)
-            soft_beta = tf.scalar_mul(tf.constant(softq_k), step_number_ph)
+            # soft_beta = tf.scalar_mul(tf.constant(softq_k), step_number_ph)
+            soft_beta = 1e-4
             if use_prior is False:
                 q_t_selected_target = rew_t_ph + (1.0 - done_mask_ph) * gamma/soft_beta * \
                                                       tf.reduce_logsumexp(math.log(1/float(num_actions)) + soft_beta * q_tp1, axis=1)
