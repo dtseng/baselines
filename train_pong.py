@@ -27,12 +27,12 @@ def main():
         target_network_update_freq=1000,
         gamma=0.99,
         prioritized_replay=True,
-        score_limit=21,
+        score_limit=None,
         scope="deepq",
         prior=prior
     )
     print("FINISHED.")
-    act.save("models/soft_q_with_strong_prior.pkl")
+    # act.save("models/soft_q_with_strong_prior.pkl")
     env.close()
 
 

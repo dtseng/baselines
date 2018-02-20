@@ -26,7 +26,7 @@ def main():
         print_freq=1,
         callback=callback,
         prioritized_replay=True,
-        score_limit=200,
+        score_limit=None,
         scope="deepq",
         prior=prior
     )

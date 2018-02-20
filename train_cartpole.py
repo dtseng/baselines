@@ -13,7 +13,7 @@ def main():
     env = gym.make("CartPole-v0")
     model = deepq.models.mlp([64])
 
-    prior = deepq.load("models/cartpole.pkl", scope="prior")
+    # prior = deepq.load("models/cartpole.pkl", scope="prior")
 
     act = deepq.learn(
         env,
@@ -27,10 +27,10 @@ def main():
         callback=callback,
         prioritized_replay=True,
         scope="deepq",
-        prior=prior
+        prior=None
     )
-    print("Saving model to cartpole_model.pkl")
-    act.save("models/cartpole.pkl")
+    # print("Saving model to cartpole_model.pkl")
+    # act.save("models/cartpole.pkl")
 
 
 if __name__ == '__main__':

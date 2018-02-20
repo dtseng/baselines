@@ -10,7 +10,7 @@ import sys
 import baselines.common.tf_util as U
 
 from baselines import logger
-from baselines.common.schedules import LinearSchedule
+from baselines.common.schedules import LinearSchedule, ConstantSchedule
 from baselines import deepq
 from baselines.deepq.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 
@@ -81,11 +81,22 @@ def load(path, num_cpu=16, scope="deepq"):
 #     reduced = np.exp(x-y)
 #     return reduced/np.sum(reduced, axis=1)[:, None]
 
+def hard_amax(x):
+    return (x == np.amax(x, axis=1, keepdims=True)).astype(int)
 
 def softmax(x):
     y = np.amax(x, axis=1, keepdims=True)
     reduced = np.exp(x-y)
     return reduced/np.sum(reduced, axis=1, keepdims=True)
+
+def test_rollout(num_episodes, env, act):
+    episode_rew = 0
+    for _ in range(num_episodes):
+        obs, done = env.reset(), False
+        while not done:
+            obs, rew, done, _ = env.step(act(obs[None])[2][0])
+            episode_rew += rew
+    return episode_rew / num_episodes
 
 def learn(env,
           q_func,
@@ -110,6 +121,8 @@ def learn(env,
           score_limit=None,
           prior=None,
           scope="deepq",
+          rollout_period=10, # do a rollout every _ episodes
+          rollout_episodes=5, # for each rollout, try _ times to get an average
           callback=None):
     """Train a deepq model.
 
@@ -215,17 +228,16 @@ def learn(env,
         replay_buffer = ReplayBuffer(buffer_size)
         beta_schedule = None
     # Create the schedule for exploration starting from 1.
-    exploration = LinearSchedule(schedule_timesteps=int(exploration_fraction * max_timesteps),
-                                 initial_p=1.0,
-                                 final_p=exploration_final_eps)
+    # exploration = LinearSchedule(schedule_timesteps=int(exploration_fraction * max_timesteps),
+    #                              initial_p=0.1,
+    #                              final_p=exploration_final_eps)
+    exploration = ConstantSchedule(value=0.1) # !!! Trying to mitigate covariate shift.
 
     summary_writer = tf.summary.FileWriter(sys.argv[1], sess.graph, flush_secs=10)
 
     # Initialize the parameters and copy them to the target network.
     U.initialize()
     update_target()
-
-    # summary_writer = tf.summary.FileWriter(sys.argv[1], tf.get_default_graph(), flush_secs=10)
 
     episode_rewards = [0.0]
     saved_mean_reward = None
@@ -254,10 +266,19 @@ def learn(env,
                 summary = tf.Summary()
                 summary.value.add(tag='return', simple_value=episode_rewards[-1])
                 summary.value.add(tag='mean100_return', simple_value=np.mean(episode_rewards[-100:]))
+                summary.value.add(tag='exploration', simple_value=exploration.value(t))
+
+                if len(episode_rewards) % rollout_period == 0:
+                    mean_rollout_reward = test_rollout(rollout_episodes, env, act)
+                    summary.value.add(tag='rollout_reward', simple_value=mean_rollout_reward)
+                    obs = env.reset()
+
                 summary_writer.add_summary(summary, t)
+
                 if score_limit is not None and episode_rewards[-1] >= score_limit:
                     break
                 episode_rewards.append(0.0)
+
 
             if t > learning_starts and t % train_freq == 0:
                 # Minimize the error in Bellman's equation on a batch sampled from replay buffer.
@@ -269,7 +290,7 @@ def learn(env,
                     weights, batch_idxes = np.ones_like(rewards), None
 
                 if use_prior:
-                    prior_policy = softmax(prior(obses_tp1)[1])
+                    prior_policy = hard_amax(prior(obses_tp1)[1])
                 else:
                     prior_policy = np.zeros((obses_t.shape[0], env.action_space.n))
                 td_errors = train(obses_t, actions, rewards, obses_tp1, dones, weights, t, prior_policy)
@@ -291,10 +312,6 @@ def learn(env,
                 logger.record_tabular("current episode reward", episode_rewards[-2])
                 logger.record_tabular("mean 100 episode reward", mean_100ep_reward)
                 logger.record_tabular("% time spent exploring", int(100 * exploration.value(t)))
-                # summary = tf.Summary()
-                # summary.value.add(tag='episode_return', simple_value=episode_rewards[-2])
-                # summary.value.add(tag='mean100_return', simple_value=mean_100ep_reward)
-                # summary_writer.add_summary( summary, t)
                 logger.dump_tabular()
 
             if (checkpoint_freq is not None and t > learning_starts and
