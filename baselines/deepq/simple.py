@@ -211,6 +211,7 @@ def learn(env,
         'q_func': q_func,
         'num_actions': env.action_space.n,
     }
+
     # Create the replay buffer
     if prioritized_replay:
         replay_buffer = PrioritizedReplayBuffer(buffer_size, alpha=prioritized_replay_alpha)
@@ -253,7 +254,7 @@ def learn(env,
                 if callback(locals(), globals()):
                     break
             # Take action and update exploration to the newest value
-            action = act(np.array(obs)[None], update_eps=exploration.value(t))[0][0]
+            action = prior(np.array(obs)[None], update_eps=exploration.value(t))[0][0]
             new_obs, rew, done, _ = env.step(action)
             # Store transition in the replay buffer.
             replay_buffer.add(obs, action, rew, new_obs, float(done))
