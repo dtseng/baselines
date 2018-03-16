@@ -5,7 +5,7 @@ import functools
 import copy
 import os
 import collections
-
+from tensorflow.python.tools import inspect_checkpoint as chkp
 
 # ================================================================
 # Make consistent with numpy
@@ -268,8 +268,16 @@ def set_value(v, val):
 # ================================================================
 
 
-def load_state(fname):
-    saver = tf.train.Saver()
+def load_state(fname, scope):
+    # print("fname: ", fname)
+    # chkp.print_tensors_in_checkpoint_file(fname, tensor_name='', all_tensors=False, all_tensor_names=True)
+    # print(1/0)
+    variable_lst = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=scope)
+    # print("scope: ", scope)
+    # print(variable_lst)
+    # print("@@@@@@")
+    saver = tf.train.Saver(variable_lst)
+    # saver = tf.train.Saver()
     saver.restore(get_session(), fname)
 
 

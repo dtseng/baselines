@@ -21,19 +21,20 @@ class ActWrapper(object):
         self._act_params = act_params
 
     @staticmethod
-    def load(path, num_cpu=16, scope="deepq"):
+    def load(path, sess_exists, num_cpu=16, scope="deepq"):
         with open(path, "rb") as f:
             model_data, act_params = dill.load(f)
         act = deepq.build_act(**act_params, scope=scope)
-        sess = U.make_session(num_cpu=num_cpu)
-        sess.__enter__()
+        if not sess_exists:
+            sess = U.make_session(num_cpu=num_cpu)
+            sess.__enter__()
         with tempfile.TemporaryDirectory() as td:
             arc_path = os.path.join(td, "packed.zip")
             with open(arc_path, "wb") as f:
                 f.write(model_data)
 
             zipfile.ZipFile(arc_path, 'r', zipfile.ZIP_DEFLATED).extractall(td)
-            U.load_state(os.path.join(td, "model"))
+            U.load_state(os.path.join(td, "model"), scope)
 
         return ActWrapper(act, act_params)
 
@@ -57,7 +58,7 @@ class ActWrapper(object):
             dill.dump((model_data, self._act_params), f)
 
 
-def load(path, num_cpu=16, scope="deepq"):
+def load(path, sess_exists=False, num_cpu=16, scope="deepq"):
     """Load act function that was returned by learn function.
 
     Parameters
@@ -73,13 +74,7 @@ def load(path, num_cpu=16, scope="deepq"):
         function that takes a batch of observations
         and returns actions.
     """
-    return ActWrapper.load(path, num_cpu=num_cpu, scope=scope)
-
-
-# def softmax(x):
-#     y = np.amax(x, axis=1)[:, None]
-#     reduced = np.exp(x-y)
-#     return reduced/np.sum(reduced, axis=1)[:, None]
+    return ActWrapper.load(path, sess_exists, num_cpu=num_cpu, scope=scope)
 
 def hard_amax(x):
     return (x == np.amax(x, axis=1, keepdims=True)).astype(int)
@@ -228,15 +223,32 @@ def learn(env,
         replay_buffer = ReplayBuffer(buffer_size)
         beta_schedule = None
     # Create the schedule for exploration starting from 1.
-    # exploration = LinearSchedule(schedule_timesteps=int(exploration_fraction * max_timesteps),
-    #                              initial_p=0.1,
-    #                              final_p=exploration_final_eps)
-    exploration = ConstantSchedule(value=0.1) # !!! Trying to mitigate covariate shift.
+    exploration = LinearSchedule(schedule_timesteps=int(exploration_fraction * max_timesteps),
+                                  initial_p=0.1,
+                                  final_p=exploration_final_eps)
+    #exploration = ConstantSchedule(value=0.1) # !!! Trying to mitigate covariate shift.
 
     summary_writer = tf.summary.FileWriter(sys.argv[1], sess.graph, flush_secs=10)
 
     # Initialize the parameters and copy them to the target network.
     U.initialize()
+
+    prior = deepq.load("models/cartpole_fully_trained.pkl", sess_exists=True, scope="prior")
+
+
+    # prior = deepq.load("models/pong_fully_trained_2.pkl", sess_exists=True, scope="prior")
+
+
+    while True:
+        obs, done = env.reset(), False
+        episode_rew = 0
+        while not done:
+            # env.render()
+            obs, rew, done, _ = env.step(prior(obs[None])[0][0])
+            episode_rew += rew
+        print("Episode reward", episode_rew)
+
+
     update_target()
 
     episode_rewards = [0.0]
@@ -244,6 +256,16 @@ def learn(env,
     obs = env.reset()
 
     start_time = time.time()
+
+
+    while True:
+        obs, done = env.reset(), False
+        episode_rew = 0
+        while not done:
+            # env.render()
+            obs, rew, done, _ = env.step(prior(obs[None])[0][0])
+            episode_rew += rew
+        print("Episode reward", episode_rew)
 
     with tempfile.TemporaryDirectory() as td:
         model_saved = False

@@ -27,7 +27,7 @@ def main():
         callback=callback,
         prioritized_replay=True,
         scope="deepq",
-        prior=None
+        prior=True
     )
     # print("Saving model to cartpole_model.pkl")
     # act.save("models/cartpole.pkl")
