@@ -114,7 +114,7 @@ def learn(env,
           prioritized_replay_eps=1e-6,
           num_cpu=16,
           score_limit=None,
-          prior=None,
+          prior_fname=None,
           scope="deepq",
           rollout_period=10, # do a rollout every _ episodes
           rollout_episodes=5, # for each rollout, try _ times to get an average
@@ -191,7 +191,7 @@ def learn(env,
     sess = U.make_session(num_cpu=1)
     sess.__enter__()
 
-    use_prior = prior is not None
+    use_prior = prior_fname is not None
 
     def make_obs_ph(name):
         return U.BatchInput(env.observation_space.shape, name=name)
@@ -233,21 +233,8 @@ def learn(env,
     # Initialize the parameters and copy them to the target network.
     U.initialize()
 
-    prior = deepq.load("models/cartpole_fully_trained.pkl", sess_exists=True, scope="prior")
-
-
-    # prior = deepq.load("models/pong_fully_trained_2.pkl", sess_exists=True, scope="prior")
-
-
-    while True:
-        obs, done = env.reset(), False
-        episode_rew = 0
-        while not done:
-            # env.render()
-            obs, rew, done, _ = env.step(prior(obs[None])[0][0])
-            episode_rew += rew
-        print("Episode reward", episode_rew)
-
+    if use_prior:
+        prior = deepq.load(prior_fname, sess_exists=True, scope="prior")
 
     update_target()
 
@@ -256,16 +243,6 @@ def learn(env,
     obs = env.reset()
 
     start_time = time.time()
-
-
-    while True:
-        obs, done = env.reset(), False
-        episode_rew = 0
-        while not done:
-            # env.render()
-            obs, rew, done, _ = env.step(prior(obs[None])[0][0])
-            episode_rew += rew
-        print("Episode reward", episode_rew)
 
     with tempfile.TemporaryDirectory() as td:
         model_saved = False
@@ -317,7 +294,6 @@ def learn(env,
                     prior_policy = np.zeros((obses_t.shape[0], env.action_space.n))
                 td_errors = train(obses_t, actions, rewards, obses_tp1, dones, weights, t, prior_policy)
 
-
                 if prioritized_replay:
                     new_priorities = np.abs(td_errors) + prioritized_replay_eps
                     replay_buffer.update_priorities(batch_idxes, new_priorities)
@@ -348,6 +324,6 @@ def learn(env,
         if model_saved:
             if print_freq is not None:
                 logger.log("Restored model with mean reward: {}".format(saved_mean_reward))
-            U.load_state(model_file)
+            # U.load_state(model_file)
 
     return ActWrapper(act, act_params)
