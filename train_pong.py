@@ -1,5 +1,5 @@
 import gym
-
+import sys
 from baselines import deepq
 from baselines.common.atari_wrappers_deprecated import wrap_dqn, ScaledFloatFrame
 
@@ -21,7 +21,7 @@ def main():
         lr=1e-4,
         max_timesteps=2000000,
         buffer_size=10000,
-        exploration_fraction=0.1,
+        exploration_fraction=sys.argv[4],
         exploration_final_eps=0.01,
         train_freq=4,
         learning_starts=10000,

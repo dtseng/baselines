@@ -253,8 +253,18 @@ def learn(env,
             if callback is not None:
                 if callback(locals(), globals()):
                     break
+
             # Take action and update exploration to the newest value
-            action = prior(np.array(obs)[None], update_eps=exploration.value(t))[0][0]
+            if (sys.argv[5]) == "exp_act_eps":
+                action = act(np.array(obs)[None], update_eps=exploration.value(t))[0][0]
+            elif (sys.argv[5]) == "exp_act_softmax":
+                probs = softmax(act(np.array(obs)[None], update_eps=exploration.value(t))[1][0])
+                action = np.random.choice(env.action_space.n, 1, p=probs)
+            elif (sys.argv[5] == "exp_prior"):
+                action = prior(np.array(obs)[None], update_eps=exploration.value(t))[2][0]
+            else:
+                assert (1==0)
+
             new_obs, rew, done, _ = env.step(action)
             # Store transition in the replay buffer.
             replay_buffer.add(obs, action, rew, new_obs, float(done))
