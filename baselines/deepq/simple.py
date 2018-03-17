@@ -260,7 +260,7 @@ def learn(env,
             elif (sys.argv[5]) == "exp_act_softmax":
                 q_values = act(np.array(obs)[None], update_eps=exploration.value(t))[1]
                 probs = softmax(q_values)[0]
-                action = np.random.choice(env.action_space.n, 1, p=probs)
+                action = np.random.choice(env.action_space.n, 1, p=probs)[0]
 
             elif (sys.argv[5] == "exp_prior"):
                 action = prior(np.array(obs)[None], update_eps=exploration.value(t))[0][0]
