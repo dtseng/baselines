@@ -225,8 +225,25 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
                 q_t_selected_target = rew_t_ph + (1.0 - done_mask_ph) * gamma/soft_beta * \
                                                       tf.reduce_logsumexp(math.log(1/float(num_actions)) + soft_beta * q_tp1, axis=1)
             else:
-                q_t_selected_target = rew_t_ph + (1.0 - done_mask_ph) * gamma/soft_beta * \
+                eps_list = [v for v in tf.global_variables() if v.name == "deepq/eps:0"]
+                assert (len(eps_list) == 1)
+                eps = eps_list[0]
+
+                # chose_random = tf.random_uniform(tf.stack([batch_size]), minval=0, maxval=1, dtype=tf.float32) < eps
+                # stochastic_actions = tf.where(chose_random, random_actions, deterministic_actions)
+                #
+                # output_actions = tf.cond(stochastic_ph, lambda: stochastic_actions, lambda: deterministic_actions)
+                q_t_selected_target_stochastic = rew_t_ph + (1.0 - done_mask_ph) * gamma/soft_beta * \
+                                                      tf.reduce_logsumexp(math.log(1/float(num_actions)) + soft_beta * q_tp1, axis=1)
+
+                q_t_selected_target_prior = rew_t_ph + (1.0 - done_mask_ph) * gamma/soft_beta * \
                                                       tf.reduce_logsumexp(tf.log(prior_policy_ph) + soft_beta * q_tp1, axis=1)
+
+                chose_random = tf.random_uniform(tf.shape(q_t_selected_target_stochastic), minval=0, maxval=1, dtype=tf.float32) < eps
+
+                #tf.shape? or tf.get_shape?
+
+                q_t_selected_target = tf.where(chose_random, q_t_selected_target_stochastic, q_t_selected_target_prior)
 
         # compute the error (potentially clipped)
         td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
