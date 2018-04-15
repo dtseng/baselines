@@ -324,10 +324,10 @@ if __name__ == '__main__':
                     summary.value.add(tag='beta', simple_value=info["steps"]*args.k)
                     summary.value.add(tag='exploration', simple_value=exploration.value(num_iters))
 
-                    if len(info["rewards"]) % 50 == 0:
-                        mean_rollout_reward = test_rollout(5, env, act)
-                        summary.value.add(tag='rollout_reward', simple_value=mean_rollout_reward)
-                        obs = env.reset()
+                    # if len(info["rewards"]) % 50 == 0: #!! Need to fix. This uses info['steps'], which I think screws things up
+                    #     mean_rollout_reward = test_rollout(5, env, act)
+                    #     summary.value.add(tag='rollout_reward', simple_value=mean_rollout_reward)
+                    #     obs = env.reset()
 
                     summary_writer.add_summary(summary, info["steps"])
 
