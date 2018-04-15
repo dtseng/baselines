@@ -18,20 +18,22 @@ class ActWrapper(object):
         self._act = act
         self._act_params = act_params
 
-    @staticmethod
-    def load(path, num_cpu=16):
+    # @staticmethod
+    def load(path, sess_exists=False, num_cpu=16, scope="deepq"):
+        print("here...?")
         with open(path, "rb") as f:
             model_data, act_params = dill.load(f)
-        act = deepq.build_act(**act_params)
-        sess = U.make_session(num_cpu=num_cpu)
-        sess.__enter__()
+        act = deepq.build_act(**act_params, scope=scope)
+        if not sess_exists:
+            sess = U.make_session(num_cpu=num_cpu)
+            sess.__enter__()
         with tempfile.TemporaryDirectory() as td:
             arc_path = os.path.join(td, "packed.zip")
             with open(arc_path, "wb") as f:
                 f.write(model_data)
 
             zipfile.ZipFile(arc_path, 'r', zipfile.ZIP_DEFLATED).extractall(td)
-            U.load_state(os.path.join(td, "model"))
+            U.load_state(os.path.join(td, "model"), scope)
 
         return ActWrapper(act, act_params)
 

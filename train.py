@@ -8,7 +8,7 @@ import time
 
 
 import baselines.common.tf_util as U
-
+import math
 from baselines import logger
 from baselines import deepq
 from baselines.deepq.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
@@ -34,8 +34,8 @@ class ActWrapper(object):
         self._act = act
         self._act_params = act_params
 
-    @staticmethod
-    def load(path, sess_exists, num_cpu=16, scope="deepq"):
+    @classmethod
+    def load(self, path, sess_exists, num_cpu=16, scope="deepq"):
         with open(path, "rb") as f:
             model_data, act_params = dill.load(f)
         act = deepq.build_act(**act_params, scope=scope)
@@ -103,25 +103,29 @@ def parse_args():
     # Core DQN parameters
     parser.add_argument("--replay-buffer-size", type=int, default=int(1e6), help="replay buffer size")
     parser.add_argument("--lr", type=float, default=1e-4, help="learning rate for Adam optimizer")
-    parser.add_argument("--num-steps", type=int, default=int(2e8), help="total number of steps to run the environment for")
+    parser.add_argument("--num-steps", type=float, default=2e8, help="total number of steps to run the environment for")
     parser.add_argument("--batch-size", type=int, default=32, help="number of transitions to optimize at the same time")
     parser.add_argument("--learning-freq", type=int, default=4, help="number of iterations between every optimization step")
-    parser.add_argument("--target-update-freq", type=int, default=40000, help="number of iterations between every target network update")
+    parser.add_argument("--target-update-freq", type=float, default=40000, help="number of iterations between every target network update")
     # Bells and whistles
-    boolean_flag(parser, "double-q", default=True, help="whether or not to use double q learning")
+    boolean_flag(parser, "double-q", default=False, help="whether or not to use double q learning")
     boolean_flag(parser, "dueling", default=False, help="whether or not to use dueling model")
     boolean_flag(parser, "prioritized", default=False, help="whether or not to use prioritized replay buffer")
     parser.add_argument("--prioritized-alpha", type=float, default=0.6, help="alpha parameter for prioritized replay buffer")
     parser.add_argument("--prioritized-beta0", type=float, default=0.4, help="initial value of beta parameters for prioritized replay")
     parser.add_argument("--prioritized-eps", type=float, default=1e-6, help="eps parameter for prioritized replay buffer")
     # Checkpointing
-    parser.add_argument("--save-dir", type=str, default=None, help="directory in which training state and model should be saved.")
+    parser.add_argument("--save-loc", type=str, default=None, help="directory in which model should be saved.")
+    parser.add_argument("--prior-loc", type=str, default=None, help="directory in which prior model is located.")
+
     parser.add_argument("--save-azure-container", type=str, default=None,
                         help="It present data will saved/loaded from Azure. Should be in format ACCOUNT_NAME:ACCOUNT_KEY:CONTAINER")
-    parser.add_argument("--save-freq", type=int, default=1e6, help="save model once every time this many iterations are completed")
+    parser.add_argument("--save-freq", type=float, default=1e6, help="save model once every time this many iterations are completed")
     boolean_flag(parser, "load-on-start", default=True, help="if true and model was previously saved then training will be resumed")
     parser.add_argument("--log-dir", type=str, default=None, help="directory in which logs should be saved.")
-
+    boolean_flag(parser, "softq", default=False, help="whether or not to use softq learning")
+    parser.add_argument("--k", type=float, default=1e-6, help="scheduling for beta")
+    parser.add_argument("--softmax-weight", type=float, default=1, help="scheduling for beta")
 
     return parser.parse_args()
 
@@ -159,46 +163,37 @@ def maybe_load_model(savedir, container):
         return
 
     state_path = os.path.join(os.path.join(savedir, 'training_state.pkl.zip'))
+    print("got state path....")
     if container is not None:
         logger.log("Attempting to download model from Azure")
         found_model = container.get(savedir, 'training_state.pkl.zip')
     else:
         found_model = os.path.exists(state_path)
+    print("found model...?")
     if found_model:
         state = pickle_load(state_path, compression=True)
+        print("loaded state...")
         model_dir = "model-{}".format(state["num_iters"])
         if container is not None:
             container.get(savedir, model_dir)
         U.load_state(os.path.join(savedir, model_dir, "saved"))
+        print("loaded model...")
         logger.log("Loaded models checkpoint at {} iterations".format(state["num_iters"]))
         return state
 
 
 def test_rollout(num_episodes, env, act):
-    episode_rew = 0
     for _ in range(num_episodes):
         obs, done = env.reset(), False
         while not done:
-            obs, rew, done, _ = env.step(act(np.array(obs)[None])[2][0])
-            episode_rew += rew
-    return episode_rew / num_episodes
+            obs, rew, done, info = env.step(act(np.array(obs)[None])[2][0])
+
+    return np.mean(info["rewards"][-num_episodes:])
 
 
 if __name__ == '__main__':
     args = parse_args()
-    # Parse savedir and azure container.
-    savedir = args.save_dir
-    if args.save_azure_container is not None:
-        account_name, account_key, container_name = args.save_azure_container.split(":")
-        container = Container(account_name=account_name,
-                              account_key=account_key,
-                              container_name=container_name,
-                              maybe_create=True)
-        if savedir is None:
-            # Careful! This will not get cleaned up. Docker spoils the developers.
-            savedir = tempfile.TemporaryDirectory().name
-    else:
-        container = None
+
     # Create and seed the env.
     env, monitored_env = make_env(args.env)
     if args.seed > 0:
@@ -209,20 +204,24 @@ if __name__ == '__main__':
         return U.Uint8Input(env.observation_space.shape, name=name)
 
     q_func = dueling_model if args.dueling else model
-    # q_func = mlp_model # !!!
+
 
     with U.make_session(4) as sess:
         summary_writer = tf.summary.FileWriter(args.log_dir, sess.graph, flush_secs=10)
+
+        use_prior = args.prior_loc is not None
         # Create training graph and replay buffer
         act, train, update_target, debug = deepq.build_train(
             make_obs_ph=make_obs_ph,
             q_func=q_func,
             num_actions=env.action_space.n,
             optimizer=tf.train.AdamOptimizer(learning_rate=args.lr, epsilon=1e-4),
+            args=args,
             gamma=0.99,
             grad_norm_clipping=10,
             double_q=args.double_q,
-            scope="prior" # !!!!
+            scope="softq",
+            use_prior=use_prior,
         )
 
         act_params = {
@@ -246,14 +245,11 @@ if __name__ == '__main__':
 
         U.initialize()
         update_target()
+
         num_iters = 0
 
-        # Load the model
-        # state = maybe_load_model(savedir, container)
-        # if state is not None:
-        #
-        #     num_iters, replay_buffer = state["num_iters"], state["replay_buffer"],
-        #     monitored_env.set_state(state["monitor_state"])
+        if args.prior_loc:
+            prior = ActWrapper.load(args.prior_loc, sess_exists=True, scope="deepq")
 
         start_time, start_steps = None, None
         steps_per_iter = RunningAvg(0.999)
@@ -284,8 +280,13 @@ if __name__ == '__main__':
                 else:
                     obses_t, actions, rewards, obses_tp1, dones = replay_buffer.sample(args.batch_size)
                     weights = np.ones_like(rewards)
+
+                if use_prior:
+                    prior_policy = softmax(args.softmax_weight*prior(obses_tp1)[1])
+                else:
+                    prior_policy = np.zeros((obses_t.shape[0], env.action_space.n))
                 # Minimize the error in Bellman's equation and compute TD-error
-                td_errors = train(obses_t, actions, rewards, obses_tp1, dones, weights)
+                td_errors = train(obses_t, actions, rewards, obses_tp1, dones, weights, info["steps"], prior_policy)
                 # Update the priorities in the replay buffer
                 if args.prioritized:
                     new_priorities = np.abs(td_errors) + args.prioritized_eps
@@ -320,6 +321,14 @@ if __name__ == '__main__':
                     summary = tf.Summary()
                     summary.value.add(tag='return', simple_value=info["rewards"][-1])
                     summary.value.add(tag='mean100_return', simple_value=mean_100ep_reward)
+                    summary.value.add(tag='beta', simple_value=info["steps"]*args.k)
+                    summary.value.add(tag='exploration', simple_value=exploration.value(num_iters))
+
+                    if len(info["rewards"]) % 50 == 0:
+                        mean_rollout_reward = test_rollout(5, env, act)
+                        summary.value.add(tag='rollout_reward', simple_value=mean_rollout_reward)
+                        obs = env.reset()
+
                     summary_writer.add_summary(summary, info["steps"])
 
                 if args.prioritized:
@@ -331,11 +340,10 @@ if __name__ == '__main__':
                 logger.log("ETA: " + pretty_eta(int(steps_left / fps_estimate)))
                 logger.log()
 
-            if mean_100ep_reward is not None and num_iters > 0 and (num_iters % args.save_freq == 0 or info["steps"] > args.num_steps):
+
+            if args.save_loc and args.save_freq and mean_100ep_reward is not None and num_iters > 0 and (num_iters % args.save_freq == 0 or info["steps"] > args.num_steps):
                 if saved_mean_reward is None or mean_100ep_reward > saved_mean_reward:
-
-
                     logger.log("Saving model due to mean reward increase: {} -> {}".format(
                                    saved_mean_reward, mean_100ep_reward))
-                    ActWrapper(act, act_params).save(args.save_dir)
+                    ActWrapper(act, act_params).save(args.save_loc)
                     saved_mean_reward = mean_100ep_reward

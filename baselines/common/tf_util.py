@@ -268,10 +268,11 @@ def set_value(v, val):
 # ================================================================
 
 
-def load_state(fname):
-    saver = tf.train.Saver()
+def load_state(fname, scope):
+    variable_lst = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=scope)
+    saver = tf.train.Saver(variable_lst)
     saver.restore(get_session(), fname)
-    print("finished loading state..")
+    print("Restored model.")
 
 def save_state(fname):
     os.makedirs(os.path.dirname(fname), exist_ok=True)

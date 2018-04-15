@@ -69,7 +69,7 @@ The functions in this file can are used to create the following functions:
 """
 import tensorflow as tf
 import baselines.common.tf_util as U
-
+import math
 
 def build_act(make_obs_ph, q_func, num_actions, scope="deepq", reuse=None):
     """Creates the act function:
@@ -124,13 +124,18 @@ def build_act(make_obs_ph, q_func, num_actions, scope="deepq", reuse=None):
         return act
 
 
-def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=None, gamma=1.0, double_q=True, scope="deepq", reuse=None):
-    """Creates the act function:
-
+def build_train(make_obs_ph, q_func, num_actions, optimizer, args,
+                grad_norm_clipping=None,
+                gamma=1.0,
+                double_q=True,
+                scope="deepq",
+                reuse=None,
+                use_prior=False):
+    """Creates the train function:
     Parameters
     ----------
     make_obs_ph: str -> tf.placeholder or TfInput
-        a function that take a name and creates a placeholder of input with that name
+        a function that takes a name and creates a placeholder of input with that name
     q_func: (tf.Variable, int, str, bool) -> tf.Variable
         the model that takes the following inputs:
             observation_in: object
@@ -148,7 +153,7 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
     optimizer: tf.train.Optimizer
         optimizer to use for the Q-learning objective.
     grad_norm_clipping: float or None
-        clip graident norms to this value. If None no clipping is performed.
+        clip gradient norms to this value. If None no clipping is performed.
     gamma: float
         discount rate.
     double_q: bool
@@ -158,7 +163,6 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
         optional scope for variable_scope.
     reuse: bool or None
         whether or not the variables should be reused. To be able to reuse the scope must be given.
-
     Returns
     -------
     act: (tf.Variable, bool, float) -> tf.Variable
@@ -178,15 +182,18 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
     with tf.variable_scope(scope, reuse=reuse):
         # set up placeholders
         obs_t_input = U.ensure_tf_input(make_obs_ph("obs_t"))
+        step_number_ph = tf.placeholder(tf.float32, [], name="step_number")
         act_t_ph = tf.placeholder(tf.int32, [None], name="action")
         rew_t_ph = tf.placeholder(tf.float32, [None], name="reward")
         obs_tp1_input = U.ensure_tf_input(make_obs_ph("obs_tp1"))
         done_mask_ph = tf.placeholder(tf.float32, [None], name="done")
         importance_weights_ph = tf.placeholder(tf.float32, [None], name="weight")
+        prior_policy_ph = tf.placeholder(tf.float32, [None, num_actions], name="prior_policy")
 
         # q network evaluation
         q_t = q_func(obs_t_input.get(), num_actions, scope="q_func", reuse=True)  # reuse parameters from act
         q_func_vars = U.scope_vars(U.absolute_scope_name("q_func"))
+
 
         # target q network evalution
         q_tp1 = q_func(obs_tp1_input.get(), num_actions, scope="target_q_func")
@@ -196,6 +203,7 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
         q_t_selected = tf.reduce_sum(q_t * tf.one_hot(act_t_ph, num_actions), 1)
 
         # compute estimate of best possible value starting from state at t + 1
+        double_q = args.double_q
         if double_q:
             q_tp1_using_online_net = q_func(obs_tp1_input.get(), num_actions, scope="q_func", reuse=True)
             q_tp1_best_using_online_net = tf.arg_max(q_tp1_using_online_net, 1)
@@ -206,7 +214,17 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
 
         # compute RHS of bellman equation
         q_t_selected_target = rew_t_ph + gamma * q_tp1_best_masked
+        if args.softq:
+            soft_beta = tf.scalar_mul(tf.constant(args.k), step_number_ph)
 
+            if use_prior is False:
+                q_t_selected_target = rew_t_ph + (1.0 - done_mask_ph) * gamma/soft_beta * \
+                                                      tf.reduce_logsumexp(math.log(1/float(num_actions)) + soft_beta * q_tp1, axis=1)
+            else:
+                q_t_selected_target = rew_t_ph + (1.0 - done_mask_ph) * gamma/soft_beta * \
+                                                      tf.reduce_logsumexp(tf.log(prior_policy_ph) + soft_beta * q_tp1, axis=1)
+
+            
         # compute the error (potentially clipped)
         td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
         errors = U.huber_loss(td_error)
@@ -235,7 +253,9 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
                 rew_t_ph,
                 obs_tp1_input,
                 done_mask_ph,
-                importance_weights_ph
+                importance_weights_ph,
+                step_number_ph,
+                prior_policy_ph
             ],
             outputs=td_error,
             updates=[optimize_expr]
