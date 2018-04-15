@@ -271,7 +271,7 @@ def set_value(v, val):
 def load_state(fname):
     saver = tf.train.Saver()
     saver.restore(get_session(), fname)
-
+    print("finished loading state..")
 
 def save_state(fname):
     os.makedirs(os.path.dirname(fname), exist_ok=True)

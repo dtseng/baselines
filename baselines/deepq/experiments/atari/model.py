@@ -19,6 +19,14 @@ def model(img_in, num_actions, scope, reuse=False):
 
         return out
 
+def mlp_model(inpt, num_actions, scope, reuse=False):
+    hiddens = [64]
+    with tf.variable_scope(scope, reuse=reuse):
+        out = inpt
+        for hidden in hiddens:
+            out = layers.fully_connected(out, num_outputs=hidden, activation_fn=tf.nn.relu)
+        out = layers.fully_connected(out, num_outputs=num_actions, activation_fn=None)
+        return out
 
 def dueling_model(img_in, num_actions, scope, reuse=False):
     """As described in https://arxiv.org/abs/1511.06581"""

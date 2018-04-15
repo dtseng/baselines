@@ -213,7 +213,7 @@ def learn(env,
                 if callback(locals(), globals()):
                     break
             # Take action and update exploration to the newest value
-            action = act(np.array(obs)[None], update_eps=exploration.value(t))[0]
+            action = act(np.array(obs)[None], update_eps=exploration.value(t))[0][0]
             new_obs, rew, done, _ = env.step(action)
             # Store transition in the replay buffer.
             replay_buffer.add(obs, action, rew, new_obs, float(done))
@@ -247,6 +247,7 @@ def learn(env,
                 logger.record_tabular("steps", t)
                 logger.record_tabular("episodes", num_episodes)
                 logger.record_tabular("mean 100 episode reward", mean_100ep_reward)
+                logger.record_tabular('reward', episode_rewards[-2])
                 logger.record_tabular("% time spent exploring", int(100 * exploration.value(t)))
                 logger.dump_tabular()
 

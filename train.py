@@ -3,8 +3,9 @@ import gym
 import numpy as np
 import os
 import tensorflow as tf
-import tempfile
+import tempfile, zipfile, dill
 import time
+
 
 import baselines.common.tf_util as U
 
@@ -25,8 +26,74 @@ from baselines.common.schedules import LinearSchedule, PiecewiseSchedule
 # copy over LazyFrames
 from baselines.common.atari_wrappers_deprecated import wrap_dqn
 from baselines.common.azure_utils import Container
-from baselines.deepq.experiments.atari.model import model, dueling_model
+from baselines.deepq.experiments.atari.model import model, dueling_model, mlp_model
 
+
+class ActWrapper(object):
+    def __init__(self, act, act_params):
+        self._act = act
+        self._act_params = act_params
+
+    @staticmethod
+    def load(path, sess_exists, num_cpu=16, scope="deepq"):
+        with open(path, "rb") as f:
+            model_data, act_params = dill.load(f)
+        act = deepq.build_act(**act_params, scope=scope)
+        if not sess_exists:
+            sess = U.make_session(num_cpu=num_cpu)
+            sess.__enter__()
+        with tempfile.TemporaryDirectory() as td:
+            arc_path = os.path.join(td, "packed.zip")
+            with open(arc_path, "wb") as f:
+                f.write(model_data)
+
+            zipfile.ZipFile(arc_path, 'r', zipfile.ZIP_DEFLATED).extractall(td)
+            U.load_state(os.path.join(td, "model"), scope)
+
+        return ActWrapper(act, act_params)
+
+    def __call__(self, *args, **kwargs):
+        return self._act(*args, **kwargs)
+
+    def save(self, path):
+        """Save model to a pickle located at `path`"""
+        with tempfile.TemporaryDirectory() as td:
+            U.save_state(os.path.join(td, "model"))
+            arc_name = os.path.join(td, "packed.zip")
+            with zipfile.ZipFile(arc_name, 'w') as zipf:
+                for root, dirs, files in os.walk(td):
+                    for fname in files:
+                        file_path = os.path.join(root, fname)
+                        if file_path != arc_name:
+                            zipf.write(file_path, os.path.relpath(file_path, td))
+            with open(arc_name, "rb") as f:
+                model_data = f.read()
+        with open(path, "wb") as f:
+            dill.dump((model_data, self._act_params), f)
+
+def load(path, sess_exists=False, num_cpu=16, scope="deepq"):
+    """Load act function that was returned by learn function.
+    Parameters
+    ----------
+    path: str
+        path to the act function pickle
+    num_cpu: int
+        number of cpus to use for executing the policy
+    Returns
+    -------
+    act: ActWrapper
+        function that takes a batch of observations
+        and returns actions.
+    """
+    return ActWrapper.load(path, sess_exists, num_cpu=num_cpu, scope=scope)
+
+def hard_amax(x):
+    return (x == np.amax(x, axis=1, keepdims=True)).astype(int)
+
+def softmax(x):
+    y = np.amax(x, axis=1, keepdims=True)
+    reduced = np.exp(x-y)
+    return reduced/np.sum(reduced, axis=1, keepdims=True)
 
 def parse_args():
     parser = argparse.ArgumentParser("DQN experiments for Atari games")
@@ -63,6 +130,13 @@ def make_env(game_name):
     env = gym.make(game_name + "NoFrameskip-v4")
     monitored_env = SimpleMonitor(env)  # puts rewards and number of steps in info, before environment is wrapped
     env = wrap_dqn(monitored_env)  # applies a bunch of modification to simplify the observation space (downsample, make b/w)
+
+
+
+    # env = gym.make(game_name) # !!!
+    # monitored_env = SimpleMonitor(env)  # puts rewards and number of steps in info, before environment is wrapped
+
+
     return env, monitored_env
 
 
@@ -85,6 +159,7 @@ def maybe_save_model(savedir, container, state):
 
 
 def maybe_load_model(savedir, container):
+
     """Load model if present at the specified path."""
     if savedir is None:
         return
@@ -103,6 +178,16 @@ def maybe_load_model(savedir, container):
         U.load_state(os.path.join(savedir, model_dir, "saved"))
         logger.log("Loaded models checkpoint at {} iterations".format(state["num_iters"]))
         return state
+
+
+def test_rollout(num_episodes, env, act):
+    episode_rew = 0
+    for _ in range(num_episodes):
+        obs, done = env.reset(), False
+        while not done:
+            obs, rew, done, _ = env.step(act(np.array(obs)[None])[2][0])
+            episode_rew += rew
+    return episode_rew / num_episodes
 
 
 if __name__ == '__main__':
@@ -126,19 +211,31 @@ if __name__ == '__main__':
         set_global_seeds(args.seed)
         env.unwrapped.seed(args.seed)
 
+    def make_obs_ph(name):
+        return U.Uint8Input(env.observation_space.shape, name=name)
+
+    q_func = dueling_model if args.dueling else model
+    # q_func = mlp_model # !!!
 
     with U.make_session(4) as sess:
         summary_writer = tf.summary.FileWriter(args.log_dir, sess.graph, flush_secs=10)
         # Create training graph and replay buffer
         act, train, update_target, debug = deepq.build_train(
-            make_obs_ph=lambda name: U.Uint8Input(env.observation_space.shape, name=name),
-            q_func=dueling_model if args.dueling else model,
+            make_obs_ph=make_obs_ph,
+            q_func=q_func,
             num_actions=env.action_space.n,
             optimizer=tf.train.AdamOptimizer(learning_rate=args.lr, epsilon=1e-4),
             gamma=0.99,
             grad_norm_clipping=10,
-            double_q=args.double_q
+            double_q=args.double_q,
+            scope="prior" # !!!!
         )
+
+        act_params = {
+            'make_obs_ph': make_obs_ph,
+            'q_func': q_func,
+            'num_actions': env.action_space.n,
+        }
 
         approximate_num_iters = args.num_steps / 4
         exploration = PiecewiseSchedule([
@@ -158,22 +255,32 @@ if __name__ == '__main__':
         num_iters = 0
 
         # Load the model
-        state = maybe_load_model(savedir, container)
-        if state is not None:
-            num_iters, replay_buffer = state["num_iters"], state["replay_buffer"],
-            monitored_env.set_state(state["monitor_state"])
+        # state = maybe_load_model(savedir, container)
+        # if state is not None:
+        #
+        #     num_iters, replay_buffer = state["num_iters"], state["replay_buffer"],
+        #     monitored_env.set_state(state["monitor_state"])
 
         start_time, start_steps = None, None
         steps_per_iter = RunningAvg(0.999)
         iteration_time_est = RunningAvg(0.999)
         obs = env.reset()
 
-        # Main trianing loop
+        saved_mean_reward = None
+        mean_100ep_reward = None
+        info = {} # !!!s
+        info['rewards'] = []
+
+        # Main training loop
         while True:
             num_iters += 1
             # Take action and store transition in the replay buffer.
-            action = act(np.array(obs)[None], update_eps=exploration.value(num_iters))[0]
-            new_obs, rew, done, info = env.step(action)
+            action = act(np.array(obs)[None], update_eps=exploration.value(num_iters))[0][0]
+            new_obs, rew, done, _ = env.step(action) # !!!
+            # if not info: # !!!
+            info['steps'] = num_iters
+            info['rewards'].append(rew)
+
             replay_buffer.add(obs, action, rew, new_obs, float(done))
             obs = new_obs
             if done:
@@ -201,15 +308,8 @@ if __name__ == '__main__':
             if start_time is not None:
                 steps_per_iter.update(info['steps'] - start_steps)
                 iteration_time_est.update(time.time() - start_time)
-            start_time, start_steps = time.time(), info["steps"]
 
-            # Save the model and training state.
-            if num_iters > 0 and (num_iters % args.save_freq == 0 or info["steps"] > args.num_steps):
-                maybe_save_model(savedir, container, {
-                    'replay_buffer': replay_buffer,
-                    'num_iters': num_iters,
-                    'monitor_state': monitored_env.get_state()
-                })
+            start_time, start_steps = time.time(), info["steps"]
 
             if info["steps"] > args.num_steps:
                 break
@@ -217,18 +317,20 @@ if __name__ == '__main__':
             if done:
                 steps_left = args.num_steps - info["steps"]
                 completion = np.round(info["steps"] / args.num_steps, 1)
+                mean_100ep_reward = np.mean(info["rewards"][-100:])
 
                 logger.record_tabular("% completion", completion)
                 logger.record_tabular("steps", info["steps"])
                 logger.record_tabular("iters", num_iters)
                 logger.record_tabular("episodes", len(info["rewards"]))
-                logger.record_tabular("reward (100 epi mean)", np.mean(info["rewards"][-100:]))
+
+                logger.record_tabular("reward (100 epi mean)", mean_100ep_reward)
                 logger.record_tabular("exploration", exploration.value(num_iters))
 
                 if len(info["rewards"]) > 0:
                     summary = tf.Summary()
                     summary.value.add(tag='return', simple_value=info["rewards"][-1])
-                    summary.value.add(tag='mean100_return', simple_value=np.mean(info["rewards"][-100:]))
+                    summary.value.add(tag='mean100_return', simple_value=mean_100ep_reward)
                     summary_writer.add_summary(summary, info["steps"])
 
                 if args.prioritized:
@@ -239,3 +341,12 @@ if __name__ == '__main__':
                 logger.log()
                 logger.log("ETA: " + pretty_eta(int(steps_left / fps_estimate)))
                 logger.log()
+
+            if mean_100ep_reward is not None and num_iters > 0 and (num_iters % args.save_freq == 0 or info["steps"] > args.num_steps):
+                if saved_mean_reward is None or mean_100ep_reward > saved_mean_reward:
+
+
+                    logger.log("Saving model due to mean reward increase: {} -> {}".format(
+                                   saved_mean_reward, mean_100ep_reward))
+                    ActWrapper(act, act_params).save(args.save_dir)
+                    saved_mean_reward = mean_100ep_reward
