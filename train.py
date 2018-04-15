@@ -25,7 +25,7 @@ from baselines.common.schedules import LinearSchedule, PiecewiseSchedule
 # when updating this to non-deperecated ones, it is important to
 # copy over LazyFrames
 from baselines.common.atari_wrappers_deprecated import wrap_dqn
-from baselines.common.azure_utils import Container
+# from baselines.common.azure_utils import Container
 from baselines.deepq.experiments.atari.model import model, dueling_model, mlp_model
 
 
@@ -138,48 +138,48 @@ def make_env(game_name):
     return env, monitored_env
 
 
-def maybe_save_model(savedir, container, state):
-    """This function checkpoints the model and state of the training algorithm."""
-    if savedir is None:
-        return
-    start_time = time.time()
-    model_dir = "model-{}".format(state["num_iters"])
-    U.save_state(os.path.join(savedir, model_dir, "saved"))
-    if container is not None:
-        container.put(os.path.join(savedir, model_dir), model_dir)
-    relatively_safe_pickle_dump(state, os.path.join(savedir, 'training_state.pkl.zip'), compression=True)
-    if container is not None:
-        container.put(os.path.join(savedir, 'training_state.pkl.zip'), 'training_state.pkl.zip')
-    relatively_safe_pickle_dump(state["monitor_state"], os.path.join(savedir, 'monitor_state.pkl'))
-    if container is not None:
-        container.put(os.path.join(savedir, 'monitor_state.pkl'), 'monitor_state.pkl')
-    logger.log("Saved model in {} seconds\n".format(time.time() - start_time))
+# def maybe_save_model(savedir, container, state):
+#     """This function checkpoints the model and state of the training algorithm."""
+#     if savedir is None:
+#         return
+#     start_time = time.time()
+#     model_dir = "model-{}".format(state["num_iters"])
+#     U.save_state(os.path.join(savedir, model_dir, "saved"))
+#     if container is not None:
+#         container.put(os.path.join(savedir, model_dir), model_dir)
+#     relatively_safe_pickle_dump(state, os.path.join(savedir, 'training_state.pkl.zip'), compression=True)
+#     if container is not None:
+#         container.put(os.path.join(savedir, 'training_state.pkl.zip'), 'training_state.pkl.zip')
+#     relatively_safe_pickle_dump(state["monitor_state"], os.path.join(savedir, 'monitor_state.pkl'))
+#     if container is not None:
+#         container.put(os.path.join(savedir, 'monitor_state.pkl'), 'monitor_state.pkl')
+#     logger.log("Saved model in {} seconds\n".format(time.time() - start_time))
+#
 
-
-def maybe_load_model(savedir, container):
-
-    """Load model if present at the specified path."""
-    if savedir is None:
-        return
-
-    state_path = os.path.join(os.path.join(savedir, 'training_state.pkl.zip'))
-    print("got state path....")
-    if container is not None:
-        logger.log("Attempting to download model from Azure")
-        found_model = container.get(savedir, 'training_state.pkl.zip')
-    else:
-        found_model = os.path.exists(state_path)
-    print("found model...?")
-    if found_model:
-        state = pickle_load(state_path, compression=True)
-        print("loaded state...")
-        model_dir = "model-{}".format(state["num_iters"])
-        if container is not None:
-            container.get(savedir, model_dir)
-        U.load_state(os.path.join(savedir, model_dir, "saved"))
-        print("loaded model...")
-        logger.log("Loaded models checkpoint at {} iterations".format(state["num_iters"]))
-        return state
+# def maybe_load_model(savedir, container):
+#
+#     """Load model if present at the specified path."""
+#     if savedir is None:
+#         return
+#
+#     state_path = os.path.join(os.path.join(savedir, 'training_state.pkl.zip'))
+#     print("got state path....")
+#     if container is not None:
+#         logger.log("Attempting to download model from Azure")
+#         found_model = container.get(savedir, 'training_state.pkl.zip')
+#     else:
+#         found_model = os.path.exists(state_path)
+#     print("found model...?")
+#     if found_model:
+#         state = pickle_load(state_path, compression=True)
+#         print("loaded state...")
+#         model_dir = "model-{}".format(state["num_iters"])
+#         if container is not None:
+#             container.get(savedir, model_dir)
+#         U.load_state(os.path.join(savedir, model_dir, "saved"))
+#         print("loaded model...")
+#         logger.log("Loaded models checkpoint at {} iterations".format(state["num_iters"]))
+#         return state
 
 
 def test_rollout(num_episodes, env, act):
