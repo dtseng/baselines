@@ -131,12 +131,6 @@ def make_env(game_name):
     monitored_env = SimpleMonitor(env)  # puts rewards and number of steps in info, before environment is wrapped
     env = wrap_dqn(monitored_env)  # applies a bunch of modification to simplify the observation space (downsample, make b/w)
 
-
-
-    # env = gym.make(game_name) # !!!
-    # monitored_env = SimpleMonitor(env)  # puts rewards and number of steps in info, before environment is wrapped
-
-
     return env, monitored_env
 
 
@@ -268,18 +262,13 @@ if __name__ == '__main__':
 
         saved_mean_reward = None
         mean_100ep_reward = None
-        info = {} # !!!s
-        info['rewards'] = []
 
         # Main training loop
         while True:
             num_iters += 1
             # Take action and store transition in the replay buffer.
             action = act(np.array(obs)[None], update_eps=exploration.value(num_iters))[0][0]
-            new_obs, rew, done, _ = env.step(action) # !!!
-            # if not info: # !!!
-            info['steps'] = num_iters
-            info['rewards'].append(rew)
+            new_obs, rew, done, info = env.step(action)
 
             replay_buffer.add(obs, action, rew, new_obs, float(done))
             obs = new_obs
