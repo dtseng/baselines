@@ -103,10 +103,10 @@ def parse_args():
     # Core DQN parameters
     parser.add_argument("--replay-buffer-size", type=int, default=int(1e6), help="replay buffer size")
     parser.add_argument("--lr", type=float, default=1e-4, help="learning rate for Adam optimizer")
-    parser.add_argument("--num-steps", type=float, default=2e8, help="total number of steps to run the environment for")
+    parser.add_argument("--num-steps", type=float, default=5e7, help="total number of steps to run the environment for")
     parser.add_argument("--batch-size", type=int, default=32, help="number of transitions to optimize at the same time")
     parser.add_argument("--learning-freq", type=int, default=4, help="number of iterations between every optimization step")
-    parser.add_argument("--target-update-freq", type=float, default=40000, help="number of iterations between every target network update")
+    parser.add_argument("--target-update-freq", type=float, default=1e4, help="number of iterations between every target network update")
     # Bells and whistles
     boolean_flag(parser, "double-q", default=False, help="whether or not to use double q learning")
     boolean_flag(parser, "dueling", default=False, help="whether or not to use dueling model")
@@ -215,7 +215,8 @@ if __name__ == '__main__':
             make_obs_ph=make_obs_ph,
             q_func=q_func,
             num_actions=env.action_space.n,
-            optimizer=tf.train.AdamOptimizer(learning_rate=args.lr, epsilon=1e-4),
+            # optimizer=tf.train.AdamOptimizer(learning_rate=args.lr, epsilon=1e-4),
+            optimizer=tf.train.RMSPropOptimizer(learning_rate=2.5e-4, epsilon=0.01, decay=0.95, momentum=0.95),
             args=args,
             gamma=0.99,
             grad_norm_clipping=10,
@@ -233,9 +234,9 @@ if __name__ == '__main__':
         approximate_num_iters = args.num_steps / 4
         exploration = PiecewiseSchedule([
             (0, 1.0),
-            (approximate_num_iters / 50, 0.1),
-            (approximate_num_iters / 5, 0.01)
-        ], outside_value=0.01)
+            (5e4, 1.0),
+            (5e4+1e6, 0.1)
+        ], outside_value=0.1)
 
         if args.prioritized:
             replay_buffer = PrioritizedReplayBuffer(args.replay_buffer_size, args.prioritized_alpha)
@@ -271,8 +272,7 @@ if __name__ == '__main__':
             if done:
                 obs = env.reset()
 
-            if (num_iters > max(5 * args.batch_size, args.replay_buffer_size // 20) and
-                    num_iters % args.learning_freq == 0):
+            if num_iters > 5e4 and num_iters % 4 == 0:
                 # Sample a bunch of transitions from replay buffer
                 if args.prioritized:
                     experience = replay_buffer.sample(args.batch_size, beta=beta_schedule.value(num_iters))
@@ -329,7 +329,7 @@ if __name__ == '__main__':
                     #     summary.value.add(tag='rollout_reward', simple_value=mean_rollout_reward)
                     #     obs = env.reset()
 
-                    summary_writer.add_summary(summary, info["steps"])
+                    summary_writer.add_summary(summary, num_iters)
 
                 if args.prioritized:
                     logger.record_tabular("max priority", replay_buffer._max_priority)
