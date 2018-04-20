@@ -247,6 +247,8 @@ if __name__ == '__main__':
         U.initialize()
         update_target()
 
+        saver = tf.train.Saver()
+
         num_iters = 0
 
         if args.prior_loc:
@@ -262,7 +264,10 @@ if __name__ == '__main__':
 
         # Main training loop
         while True:
+
             num_iters += 1
+
+
             # Take action and store transition in the replay buffer.
             action = act(np.array(obs)[None], update_eps=exploration.value(num_iters))[0][0]
             new_obs, rew, done, info = env.step(action)
@@ -313,6 +318,12 @@ if __name__ == '__main__':
                 logger.record_tabular("steps", info["steps"])
                 logger.record_tabular("iters", num_iters)
                 logger.record_tabular("episodes", len(info["rewards"]))
+
+
+                if len(info["rewards"]) > 0 and len(info["rewards"]) % 100 == 0:
+                    save_path = saver.save(sess, "checkpoint/model.ckpt")
+                    print("Model saved in path: {} at iteration {}".format(save_path, num_iters))
+
 
                 logger.record_tabular("reward (100 epi mean)", mean_100ep_reward)
                 logger.record_tabular("exploration", exploration.value(num_iters))
