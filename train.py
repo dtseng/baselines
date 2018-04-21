@@ -306,7 +306,7 @@ if __name__ == '__main__':
 
             start_time, start_steps = time.time(), info["steps"]
 
-            if info["steps"] > args.num_steps:
+            if num_iters > args.num_steps:
                 break
 
             if done:
