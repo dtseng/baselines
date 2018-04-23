@@ -286,7 +286,7 @@ if __name__ == '__main__':
                 else:
                     prior_policy = np.zeros((obses_t.shape[0], env.action_space.n))
                 # Minimize the error in Bellman's equation and compute TD-error
-                td_errors = train(obses_t, actions, rewards, obses_tp1, dones, weights, info["steps"], prior_policy)
+                td_errors = train(obses_t, actions, rewards, obses_tp1, dones, weights, np.int64(info["steps"]), prior_policy)
                 # Update the priorities in the replay buffer
                 if args.prioritized:
                     new_priorities = np.abs(td_errors) + args.prioritized_eps

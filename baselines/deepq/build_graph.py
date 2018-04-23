@@ -182,7 +182,7 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, args,
     with tf.variable_scope(scope, reuse=reuse):
         # set up placeholders
         obs_t_input = U.ensure_tf_input(make_obs_ph("obs_t"))
-        step_number_ph = tf.placeholder(tf.float32, [], name="step_number")
+        step_number_ph = tf.placeholder(tf.int64, [], name="step_number")
         act_t_ph = tf.placeholder(tf.int32, [None], name="action")
         rew_t_ph = tf.placeholder(tf.float32, [None], name="reward")
         obs_tp1_input = U.ensure_tf_input(make_obs_ph("obs_tp1"))
@@ -224,7 +224,7 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, args,
                 q_t_selected_target = rew_t_ph + (1.0 - done_mask_ph) * gamma/soft_beta * \
                                                       tf.reduce_logsumexp(tf.log(prior_policy_ph) + soft_beta * q_tp1, axis=1)
 
-            
+
         # compute the error (potentially clipped)
         td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
         errors = U.huber_loss(td_error)
