@@ -5,6 +5,7 @@ import tempfile
 import tensorflow as tf
 import zipfile
 import time
+import pickle
 import sys
 
 import baselines.common.tf_util as U
@@ -325,5 +326,8 @@ def learn(env,
             if print_freq is not None:
                 logger.log("Restored model with mean reward: {}".format(saved_mean_reward))
             # U.load_state(model_file)
+
+    with open('saved_replay/dqn_pong.pkl', 'wb') as handle:
+        pickle.dump(replay_buffer, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     return ActWrapper(act, act_params)

@@ -8,7 +8,8 @@ def main():
     env = gym.make("PongNoFrameskip-v4")
     env = ScaledFloatFrame(wrap_dqn(env))
 
-    prior_fname = "models/pong_fully_trained_2.pkl"
+    #prior_fname = "models/pong_fully_trained_2.pkl"
+    prior_fname = None
 
     model = deepq.models.cnn_to_mlp(
         convs=[(32, 8, 4), (64, 4, 2), (64, 3, 1)],
@@ -20,6 +21,7 @@ def main():
         q_func=model,
         lr=1e-4,
         max_timesteps=2000000,
+        #max_timesteps=2000,
         buffer_size=10000,
         exploration_fraction=0.1,
         exploration_final_eps=0.01,
@@ -27,13 +29,13 @@ def main():
         learning_starts=10000,
         target_network_update_freq=1000,
         gamma=0.99,
-        prioritized_replay=True,
+        prioritized_replay=False,
         score_limit=None,
         scope="deepq",
         prior_fname=prior_fname
     )
     print("FINISHED.")
-    # act.save("models/soft_q_with_strong_prior.pkl")
+    act.save("models/pong_dqn_with_replay.pkl")
     env.close()
 
 
