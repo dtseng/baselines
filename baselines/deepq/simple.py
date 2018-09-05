@@ -116,6 +116,7 @@ def learn(env,
           num_cpu=16,
           score_limit=None,
           prior_fname=None,
+          prior_replay_fname=None,
           scope="deepq",
           rollout_period=10, # do a rollout every _ episodes
           rollout_episodes=5, # for each rollout, try _ times to get an average
@@ -213,7 +214,13 @@ def learn(env,
         'num_actions': env.action_space.n,
     }
     # Create the replay buffer
-    if prioritized_replay:
+    if prior_replay_fname:
+        with open(prior_replay_fname, 'rb') as handle:
+            print("@@@")
+            replay_buffer = pickle.load(handle)
+            print("@@@@2")
+
+    elif prioritized_replay:
         replay_buffer = PrioritizedReplayBuffer(buffer_size, alpha=prioritized_replay_alpha)
         if prioritized_replay_beta_iters is None:
             prioritized_replay_beta_iters = max_timesteps
