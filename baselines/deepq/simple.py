@@ -219,6 +219,8 @@ def learn(env,
             print("@@@")
             replay_buffer = pickle.load(handle)
             print("@@@@2")
+            print(len(replay_buffer))
+            print("@@@#")
 
     elif prioritized_replay:
         replay_buffer = PrioritizedReplayBuffer(buffer_size, alpha=prioritized_replay_alpha)
@@ -264,7 +266,8 @@ def learn(env,
             action = act(np.array(obs)[None], update_eps=exploration.value(t))[0][0]
             new_obs, rew, done, _ = env.step(action)
             # Store transition in the replay buffer.
-            replay_buffer.add(obs, action, rew, new_obs, float(done))
+            # !! Prevent adding to replay buffer for this experiment.
+            # replay_buffer.add(obs, action, rew, new_obs, float(done))
             obs = new_obs
 
             episode_rewards[-1] += rew
@@ -334,7 +337,7 @@ def learn(env,
                 logger.log("Restored model with mean reward: {}".format(saved_mean_reward))
             # U.load_state(model_file)
 
-    with open('saved_replay/dqn_pong.pkl', 'wb') as handle:
-        pickle.dump(replay_buffer, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    # with open('saved_replay/dqn_pong.pkl', 'wb') as handle:
+    #     pickle.dump(replay_buffer, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     return ActWrapper(act, act_params)

@@ -213,8 +213,8 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
             q_tp1_best = tf.reduce_max(q_tp1, 1)
         q_tp1_best_masked = (1.0 - done_mask_ph) * q_tp1_best
 
-        # !!! 
-        q_t_selected_target = rew_t_ph + (1.0 - done_mask_ph) * gamma * tf.reduce_sum(q_tp1 * prior_policy_ph)
+        # !!!
+        q_t_selected_target = rew_t_ph + (1.0 - done_mask_ph) * gamma * tf.reduce_sum(q_tp1 * prior_policy_ph, axis=1)
 
 
         # compute RHS of bellman equation
