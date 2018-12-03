@@ -119,6 +119,8 @@ def learn(env,
           scope="deepq",
           rollout_period=10, # do a rollout every _ episodes
           rollout_episodes=5, # for each rollout, try _ times to get an average
+          model_name=None,
+          softq_k=None,
           callback=None):
     """Train a deepq model.
 
@@ -205,7 +207,8 @@ def learn(env,
         gamma=gamma,
         grad_norm_clipping=10,
         scope=scope,
-        use_prior=use_prior
+        use_prior=use_prior,
+        softq_k=softq_k
     )
     act_params = {
         'make_obs_ph': make_obs_ph,
@@ -229,7 +232,7 @@ def learn(env,
                                   final_p=exploration_final_eps)
     #exploration = ConstantSchedule(value=0.1) # !!! Trying to mitigate covariate shift.
 
-    summary_writer = tf.summary.FileWriter(sys.argv[1], sess.graph, flush_secs=10)
+    summary_writer = tf.summary.FileWriter("logs/{}".format(model_name), sess.graph, flush_secs=10)
 
     # Initialize the parameters and copy them to the target network.
     U.initialize()
@@ -248,7 +251,7 @@ def learn(env,
     with tempfile.TemporaryDirectory() as td:
         model_saved = False
         time_of_training = time.strftime("%Y-%m-%dT%H:%M:%S")
-        model_file = "saved_models/{}/saved.ckpt".format(time_of_training)
+        model_file = "saved_models/{}/{}/saved.ckpt".format(model_name, time_of_training)
         for t in range(max_timesteps):
             if callback is not None:
                 if callback(locals(), globals()):
@@ -326,8 +329,5 @@ def learn(env,
             if print_freq is not None:
                 logger.log("Restored model with mean reward: {}".format(saved_mean_reward))
             # U.load_state(model_file)
-
-    with open('saved_replay/dqn_pong.pkl', 'wb') as handle:
-        pickle.dump(replay_buffer, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     return ActWrapper(act, act_params)

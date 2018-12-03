@@ -2,14 +2,18 @@ import gym
 
 from baselines import deepq
 from baselines.common.atari_wrappers_deprecated import wrap_dqn, ScaledFloatFrame
+import argparse
 
+parser = argparse.ArgumentParser()
+parser.add_argument('--iter', type=int, default=2000000)
+parser.add_argument('--prior', type=str, default=None) # models/pong_fully_trained_2.pkl"
+parser.add_argument('--name', type=str, default=None)
+parser.add_argument('--k', type=float, default=None)
+args = parser.parse_args()
 
 def main():
     env = gym.make("PongNoFrameskip-v4")
     env = ScaledFloatFrame(wrap_dqn(env))
-
-    #prior_fname = "models/pong_fully_trained_2.pkl"
-    prior_fname = None
 
     model = deepq.models.cnn_to_mlp(
         convs=[(32, 8, 4), (64, 4, 2), (64, 3, 1)],
@@ -20,8 +24,7 @@ def main():
         env,
         q_func=model,
         lr=1e-4,
-        max_timesteps=2000000,
-        #max_timesteps=2000,
+        max_timesteps=args.iter,
         buffer_size=10000,
         exploration_fraction=0.1,
         exploration_final_eps=0.01,
@@ -32,10 +35,12 @@ def main():
         prioritized_replay=False,
         score_limit=None,
         scope="deepq",
-        prior_fname=prior_fname
+        prior_fname=args.prior,
+        model_name = args.name,
+        softq_k=args.k
     )
     print("FINISHED.")
-    act.save("models/pong_dqn_with_replay.pkl")
+    act.save("models/{}.pkl".format())
     env.close()
 
 
